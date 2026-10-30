@@ -1,0 +1,23 @@
+.post-edit-backdrop{z-index:60}
+.post-edit-modal{width:min(100%,650px)}
+.post-edit-modal .modal-heading{margin-bottom:16px}
+.post-edit-caption{display:grid;gap:7px;margin:0 0 17px;color:var(--text);font-size:11px;font-weight:700}
+.post-edit-caption textarea{width:100%;min-height:100px;max-height:260px;resize:vertical;border:1px solid var(--line);border-radius:11px;background:var(--surface-soft);padding:11px 12px;color:var(--text);outline:none;font:inherit;font-size:12px;font-weight:400;line-height:1.55}
+.post-edit-caption textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(120,105,221,.1)}
+.post-edit-photo-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.post-edit-photo-heading strong{font-size:11px}
+.post-edit-photo-heading small{font-size:10px;color:var(--muted)}
+.post-edit-photo-tools{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
+.post-edit-photo-tools .button{min-height:32px;font-size:10px}
+.post-edit-replace-note,.post-edit-empty-photos{margin:8px 0 12px;color:var(--muted);font-size:10px;line-height:1.6}
+.post-edit-replace-note button{margin-left:4px;padding:0;border:0;background:none;color:var(--primary);font:inherit;font-weight:700}
+.post-edit-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:9px;margin:10px 0 13px}
+.post-edit-photo{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}
+.post-edit-photo>img{display:block;width:100%;height:100px;object-fit:cover;background:#eceaf2}
+.post-edit-photo>div{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:5px}
+.post-edit-photo>div button{display:inline-flex;align-items:center;gap:4px;padding:4px 5px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:9px}
+.post-edit-photo>div button:hover:not(:disabled){background:var(--surface);color:var(--text)}
+.post-edit-photo>div button:disabled{opacity:.55}
+.post-edit-photo>div span{padding:4px 5px;color:var(--muted);font-size:8px}
+.post-edit-modal .modal-footer{margin-top:15px}
+@media(max-width:600px){.post-edit-photo-grid{grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}.post-edit-photo>img{height:86px}}
