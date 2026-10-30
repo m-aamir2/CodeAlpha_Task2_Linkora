@@ -1,10 +1,13 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001/api'
+const baseURL = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001/api'
 export const api = axios.create({ baseURL, timeout: 20000 })
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('access')
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  const apiOrigin = new URL(baseURL, window.location.origin).origin
+  const requestBase = new URL(config.baseURL || baseURL, window.location.origin)
+  const requestOrigin = new URL(config.url || '', requestBase).origin
+  if (token && requestOrigin === apiOrigin) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 let refreshTask: Promise<string | null> | null = null
@@ -33,5 +36,6 @@ export function errorMessage(error: unknown): string {
     if (typeof data?.detail === 'string') return data.detail
     if (data) return Object.entries(data).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`).join(' · ')
   }
+  if (error instanceof Error && error.message) return error.message
   return 'Something went wrong. Please try again.'
 }

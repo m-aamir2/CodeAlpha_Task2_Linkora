@@ -3,6 +3,7 @@ import { ImagePlus, LoaderCircle, Pencil, Replace, Trash2, X } from 'lucide-reac
 import { api, errorMessage } from '../services/api'
 import { Post, PostImage } from '../types'
 import ImageCropper from './ImageCropper'
+import { uploadImageToBlob, usesDirectImageUploads } from '../services/blobUpload'
 import './EditPostModal.css'
 
 type CropJob = { file: File; replacesId?: number }
@@ -138,7 +139,12 @@ export default function EditPostModal({ post, onClose, onSave }: { post: Post; o
       form.append('content', content)
       form.append('replace_images', String(replaceAll))
       if (!replaceAll) removedIds.forEach(id => form.append('remove_image_ids', String(id)))
-      photos.forEach(photo => form.append('uploaded_images', photo.file))
+      if (usesDirectImageUploads) {
+        const urls = await Promise.all(photos.map(photo => uploadImageToBlob(photo.file, post.author.id, 'posts')))
+        urls.forEach(url => form.append('uploaded_image_urls', url))
+      } else {
+        photos.forEach(photo => form.append('uploaded_images', photo.file))
+      }
       const { data } = await api.patch<Post>(`/posts/${post.id}/`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
       onSave(data)
       onClose()

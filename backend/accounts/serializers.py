@@ -1,6 +1,7 @@
 from django.contrib.auth import password_validation
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from config.blob_urls import is_user_blob_url
 from .models import User, UserProfile
 
 class UserSerializer(serializers.ModelSerializer):
@@ -10,6 +11,8 @@ class UserSerializer(serializers.ModelSerializer):
     website = serializers.URLField(source="profile.website", required=False, allow_blank=True)
     avatar = serializers.ImageField(source="profile.avatar", required=False, allow_null=True, write_only=True)
     cover_image = serializers.ImageField(source="profile.cover_image", required=False, allow_null=True, write_only=True)
+    avatar_blob_url = serializers.URLField(write_only=True, required=False, max_length=500)
+    cover_blob_url = serializers.URLField(write_only=True, required=False, max_length=500)
     avatar_url = serializers.SerializerMethodField()
     cover_url = serializers.SerializerMethodField()
     posts_count = serializers.IntegerField(read_only=True, default=0)
@@ -18,7 +21,7 @@ class UserSerializer(serializers.ModelSerializer):
     is_following = serializers.BooleanField(read_only=True, default=False)
     class Meta:
         model = User
-        fields = ["id", "username", "full_name", "email", "bio", "location", "website", "avatar", "cover_image", "avatar_url", "cover_url", "created_at", "posts_count", "followers_count", "following_count", "is_following", "is_staff", "is_active"]
+        fields = ["id", "username", "full_name", "email", "bio", "location", "website", "avatar", "cover_image", "avatar_blob_url", "cover_blob_url", "avatar_url", "cover_url", "created_at", "posts_count", "followers_count", "following_count", "is_following", "is_staff", "is_active"]
         read_only_fields = ["id", "username", "email", "created_at", "is_staff", "is_active"]
         extra_kwargs = {"avatar": {"write_only": True}, "cover_image": {"write_only": True}}
     def get_avatar_url(self, obj):
@@ -29,6 +32,16 @@ class UserSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         cover = getattr(getattr(obj, "profile", None), "cover_image", None)
         return request.build_absolute_uri(cover.url) if request and cover else (cover.url if cover else None)
+    def validate_avatar_blob_url(self, value):
+        request = self.context.get("request")
+        if not request or not is_user_blob_url(value, request.user.pk):
+            raise serializers.ValidationError("Choose a profile image uploaded to your Linkora storage.")
+        return value
+    def validate_cover_blob_url(self, value):
+        request = self.context.get("request")
+        if not request or not is_user_blob_url(value, request.user.pk):
+            raise serializers.ValidationError("Choose a cover image uploaded to your Linkora storage.")
+        return value
     def to_representation(self, instance):
         result = super().to_representation(instance)
         request = self.context.get("request")
@@ -39,10 +52,16 @@ class UserSerializer(serializers.ModelSerializer):
         return result
     def update(self, instance, validated_data):
         profile_data = validated_data.pop("profile", {})
+        avatar_blob_url = validated_data.pop("avatar_blob_url", None)
+        cover_blob_url = validated_data.pop("cover_blob_url", None)
         profile, _ = UserProfile.objects.get_or_create(user=instance)
         for field, value in profile_data.items():
             setattr(profile, field, value)
-        if profile_data:
+        if avatar_blob_url:
+            profile.avatar = avatar_blob_url
+        if cover_blob_url:
+            profile.cover_image = cover_blob_url
+        if profile_data or avatar_blob_url or cover_blob_url:
             profile.save()
         return instance
 

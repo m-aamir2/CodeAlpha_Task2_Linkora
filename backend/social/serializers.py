@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import transaction
 from rest_framework import serializers
 from accounts.serializers import UserSerializer
+from config.blob_urls import is_user_blob_url
 from .models import Post, PostImage, Like, Comment, Follow, Notification, Hashtag, PostHashtag
 
 User = get_user_model()
@@ -34,6 +35,7 @@ class PostSerializer(serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
     images = PostImageSerializer(many=True, read_only=True)
     uploaded_images = serializers.ListField(child=serializers.ImageField(), write_only=True, required=False, allow_empty=True)
+    uploaded_image_urls = serializers.ListField(child=serializers.URLField(), write_only=True, required=False, allow_empty=True)
     replace_images = serializers.BooleanField(write_only=True, required=False, default=False)
     remove_image_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), write_only=True, required=False, allow_empty=True)
     likes_count = serializers.IntegerField(read_only=True)
@@ -42,7 +44,7 @@ class PostSerializer(serializers.ModelSerializer):
     hashtags = serializers.SerializerMethodField()
     class Meta:
         model = Post
-        fields = ["id", "author", "content", "is_public", "images", "uploaded_images", "replace_images", "remove_image_ids", "likes_count", "comments_count", "liked_by_me", "shares_count", "hashtags", "created_at", "updated_at"]
+        fields = ["id", "author", "content", "is_public", "images", "uploaded_images", "uploaded_image_urls", "replace_images", "remove_image_ids", "likes_count", "comments_count", "liked_by_me", "shares_count", "hashtags", "created_at", "updated_at"]
         read_only_fields = ["id", "author", "shares_count", "created_at", "updated_at"]
     def validate_uploaded_images(self, images):
         if len(images) > 6:
@@ -51,9 +53,16 @@ class PostSerializer(serializers.ModelSerializer):
             if image.size > settings.MAX_UPLOAD_SIZE:
                 raise serializers.ValidationError("Each image must be 8 MB or smaller.")
         return images
+    def validate_uploaded_image_urls(self, urls):
+        request = self.context.get("request")
+        user_id = getattr(getattr(request, "user", None), "pk", None)
+        if user_id is None or any(not is_user_blob_url(url, user_id) for url in urls):
+            raise serializers.ValidationError("Each image must be a valid image uploaded to your Linkora storage.")
+        return urls
     def validate(self, attrs):
         content = attrs.get("content", self.instance.content if self.instance else "")
         image_uploads = attrs.get("uploaded_images", [])
+        image_urls = attrs.get("uploaded_image_urls", [])
         replace_images = attrs.get("replace_images", False)
         remove_image_ids = attrs.get("remove_image_ids", [])
         if len(remove_image_ids) != len(set(remove_image_ids)):
@@ -65,24 +74,28 @@ class PostSerializer(serializers.ModelSerializer):
         if invalid_ids:
             raise serializers.ValidationError({"remove_image_ids": "One or more selected images do not belong to this post."})
         remaining_images = 0 if replace_images else len(existing_ids - set(remove_image_ids))
-        if remaining_images + len(image_uploads) > 6:
+        if remaining_images + len(image_uploads) + len(image_urls) > 6:
             raise serializers.ValidationError({"uploaded_images": "A post can contain up to 6 images."})
-        if not content.strip() and remaining_images + len(image_uploads) == 0:
+        if not content.strip() and remaining_images + len(image_uploads) + len(image_urls) == 0:
             raise serializers.ValidationError({"content": "Add some text or at least one image to your post."})
         return attrs
     def get_hashtags(self, obj):
         return [link.hashtag.name for link in obj.hashtag_links.select_related("hashtag").all()]
     def create(self, validated_data):
         images = validated_data.pop("uploaded_images", [])
+        image_urls = validated_data.pop("uploaded_image_urls", [])
         validated_data.pop("replace_images", None)
         validated_data.pop("remove_image_ids", None)
         post = Post.objects.create(**validated_data)
         for image in images:
             PostImage.objects.create(post=post, image=image)
+        for image_url in image_urls:
+            PostImage.objects.create(post=post, image=image_url)
         sync_hashtags(post)
         return post
     def update(self, instance, validated_data):
         images = validated_data.pop("uploaded_images", [])
+        image_urls = validated_data.pop("uploaded_image_urls", [])
         replace_images = validated_data.pop("replace_images", False)
         remove_image_ids = validated_data.pop("remove_image_ids", [])
         with transaction.atomic():
@@ -94,6 +107,8 @@ class PostSerializer(serializers.ModelSerializer):
                 transaction.on_commit(lambda storage=storage, name=name: storage.delete(name))
             for image in images:
                 PostImage.objects.create(post=instance, image=image)
+            for image_url in image_urls:
+                PostImage.objects.create(post=instance, image=image_url)
             sync_hashtags(instance)
         return instance
 

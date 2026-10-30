@@ -18,7 +18,7 @@ class Post(models.Model):
 
 class PostImage(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="images")
-    image = models.ImageField(upload_to="posts/%Y/%m/", validators=[validate_upload])
+    image = models.ImageField(upload_to="posts/%Y/%m/", max_length=500, validators=[validate_upload])
     alt_text = models.CharField(max_length=180, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -4,3 +4,4 @@ djangorestframework-simplejwt>=5.5,<6
 django-cors-headers>=4.7,<5
 Pillow>=11.0
 psycopg[binary]>=3.2
+vercel-blob>=0.5.0,<0.6

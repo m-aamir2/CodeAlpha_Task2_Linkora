@@ -29,8 +29,8 @@ class UserProfile(models.Model):
     bio = models.CharField(max_length=300, blank=True)
     location = models.CharField(max_length=120, blank=True)
     website = models.URLField(blank=True)
-    avatar = models.ImageField(upload_to="profiles/avatars/", blank=True, null=True, validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"]), validate_upload])
-    cover_image = models.ImageField(upload_to="profiles/covers/", blank=True, null=True, validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"]), validate_upload])
+    avatar = models.ImageField(upload_to="profiles/avatars/", blank=True, null=True, max_length=500, validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"]), validate_upload])
+    cover_image = models.ImageField(upload_to="profiles/covers/", blank=True, null=True, max_length=500, validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"]), validate_upload])
     updated_at = models.DateTimeField(auto_now=True)
     def __str__(self):
         return f"Profile for {self.user.username}"

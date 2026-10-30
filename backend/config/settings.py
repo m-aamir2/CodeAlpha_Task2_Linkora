@@ -1,23 +1,45 @@
 import os
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-LOCAL_ENV_FILE = BASE_DIR.parent / ".env"
-if LOCAL_ENV_FILE.exists():
-    for line in LOCAL_ENV_FILE.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, value = line.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+# Local development uses the project-root .env. Vercel variables are already in
+# the process environment and therefore take precedence over this file.
+for local_env_file in (BASE_DIR.parent / ".env.local", BASE_DIR.parent / ".env"):
+    if local_env_file.exists():
+        for line in local_env_file.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
 
 def env_bool(name, default=False):
     return os.getenv(name, str(default)).lower() in {"1", "true", "yes", "on"}
 
+
+def env_list(name, default=""):
+    return [value.strip() for value in os.getenv(name, default).split(",") if value.strip()]
+
+
+IS_VERCEL = env_bool("VERCEL", False)
+DEBUG = env_bool("DEBUG", not IS_VERCEL)
 SECRET_KEY = os.getenv("SECRET_KEY", "local-development-only-change-me")
-DEBUG = env_bool("DEBUG", True)
-ALLOWED_HOSTS = [x.strip() for x in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if x.strip()]
+if IS_VERCEL and (DEBUG or SECRET_KEY == "local-development-only-change-me"):
+    raise RuntimeError("Set DEBUG=false and a private SECRET_KEY in the Vercel project environment.")
+
+VERCEL_HOSTS = [
+    os.getenv(name, "").strip().removeprefix("https://").removeprefix("http://").split("/")[0]
+    for name in ("VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_BRANCH_URL")
+    if os.getenv(name, "").strip()
+]
+ALLOWED_HOSTS = list(dict.fromkeys([
+    *env_list("ALLOWED_HOSTS", "localhost,127.0.0.1"),
+    *VERCEL_HOSTS,
+    *( [".vercel.app"] if IS_VERCEL else [] ),
+]))
 
 INSTALLED_APPS = [
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
@@ -38,14 +60,27 @@ TEMPLATES = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIR
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DATABASE_URL = (os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or "").strip()
 if DATABASE_URL.startswith(("postgres://", "postgresql://")):
-    from urllib.parse import urlparse, unquote
     parsed = urlparse(DATABASE_URL)
-    DATABASES = {"default": {"ENGINE": "django.db.backends.postgresql", "NAME": parsed.path.lstrip("/"),
-        "USER": unquote(parsed.username or ""), "PASSWORD": unquote(parsed.password or ""),
-        "HOST": parsed.hostname or "localhost", "PORT": parsed.port or 5432,
-        "OPTIONS": {"connect_timeout": 5}}}
+    query = parse_qs(parsed.query)
+    options = {}
+    sslmode = query.get("sslmode", ["require" if IS_VERCEL else ""])[0]
+    if sslmode:
+        options["sslmode"] = sslmode
+    DATABASES = {"default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": unquote(parsed.path.lstrip("/")),
+        "USER": unquote(parsed.username or ""),
+        "PASSWORD": unquote(parsed.password or ""),
+        "HOST": parsed.hostname or "localhost",
+        "PORT": parsed.port or 5432,
+        "OPTIONS": options,
+        "CONN_MAX_AGE": 0 if IS_VERCEL else 60,
+        "CONN_HEALTH_CHECKS": True,
+    }}
+elif IS_VERCEL:
+    raise RuntimeError("Set DATABASE_URL to a persistent PostgreSQL database in the Vercel project environment.")
 else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
 
@@ -60,17 +95,43 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+USE_VERCEL_BLOB = env_bool("USE_VERCEL_BLOB", IS_VERCEL)
+if USE_VERCEL_BLOB:
+    STORAGES = {
+        "default": {"BACKEND": "config.storage.VercelBlobStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+else:
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MAX_UPLOAD_SIZE = 8 * 1024 * 1024
 
-CORS_ALLOWED_ORIGINS = [x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5180,http://127.0.0.1:5180").split(",") if x.strip()]
+VERCEL_ORIGINS = [f"https://{host}" for host in VERCEL_HOSTS]
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys([
+    *env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5180,http://127.0.0.1:5180"),
+    *VERCEL_ORIGINS,
+]))
 CORS_ALLOWED_ORIGIN_REGEXES = [r"^http://localhost:\d+$", r"^http://127\.0\.0\.1:\d+$"] if DEBUG else []
+if IS_VERCEL:
+    CORS_ALLOWED_ORIGIN_REGEXES.append(r"^https://[a-z0-9-]+\.vercel\.app$")
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys([
+    *CORS_ALLOWED_ORIGINS,
+    *env_list("CSRF_TRUSTED_ORIGINS"),
+    *( ["https://*.vercel.app"] if IS_VERCEL else [] ),
+]))
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")

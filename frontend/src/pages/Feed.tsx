@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import Avatar from '../components/Avatar'
 import PostCard from '../components/PostCard'
 import ImageCropper from '../components/ImageCropper'
+import { uploadImageToBlob, usesDirectImageUploads } from '../services/blobUpload'
 
 export default function Feed() {
   const { user }=useAuth()
@@ -51,7 +52,7 @@ export default function Feed() {
     advanceCrop()
   }
   const removeImage=(index:number)=>{const preview=previews[index];URL.revokeObjectURL(preview);previewUrls.current=previewUrls.current.filter(url=>url!==preview);setImages(items=>items.filter((_,i)=>i!==index));setPreviews(items=>items.filter((_,i)=>i!==index))}
-  const submit=async(event:FormEvent)=>{event.preventDefault();if(!content.trim()&&!images.length)return;setBusy(true);setError('');try{const form=new FormData();form.append('content',content);images.forEach(image=>form.append('uploaded_images',image));const {data}=await api.post('/posts/',form,{headers:{'Content-Type':'multipart/form-data'}});setPosts(prev=>[data,...prev]);setContent('');setImages([]);previewUrls.current.forEach(URL.revokeObjectURL);previewUrls.current=[];setPreviews([])}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
+  const submit=async(event:FormEvent)=>{event.preventDefault();if(!content.trim()&&!images.length)return;setBusy(true);setError('');try{let body:FormData|{content:string;uploaded_image_urls:string[]};if(usesDirectImageUploads){if(images.length&&!user)throw new Error('Please sign in again before uploading images.');const urls=await Promise.all(images.map(image=>uploadImageToBlob(image,user!.id,'posts')));body={content,uploaded_image_urls:urls}}else{const form=new FormData();form.append('content',content);images.forEach(image=>form.append('uploaded_images',image));body=form}const {data}=await api.post('/posts/',body,body instanceof FormData?{headers:{'Content-Type':'multipart/form-data'}}:undefined);setPosts(prev=>[data,...prev]);setContent('');setImages([]);previewUrls.current.forEach(URL.revokeObjectURL);previewUrls.current=[];setPreviews([])}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
   const removePost=(id:number)=>setPosts(items=>items.filter(post=>post.id!==id))
   const updatePost=(next:Post)=>setPosts(items=>items.map(post=>post.id===next.id?next:post))
   return <><div className="content-grid"><section className="feed-column"><div className="page-heading"><div><p className="eyebrow">YOUR LITTLE CORNER</p><h1>Good to see you, {user?.full_name?.split(' ')[0]||user?.username}.</h1><p className="muted">A fresh page, full of people you like.</p></div><span className="heading-spark"><Sparkles size={19}/></span></div>
