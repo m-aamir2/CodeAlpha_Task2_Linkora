@@ -104,6 +104,8 @@ Post edits accept multipart requests with `uploaded_images` to add photos, `remo
 
 The checked-in migrations build the schema. For PostgreSQL, set `DATABASE_URL`, `SECRET_KEY`, `DEBUG=false`, `ALLOWED_HOSTS`, and `CORS_ALLOWED_ORIGINS` in the hosting environment, install `backend/requirements.txt`, run `python manage.py migrate`, then serve Django behind an HTTPS-capable web server. Serve collected static files and uploaded media from durable storage in production. Do not commit `.env`, database files, or uploaded media.
 
+For Vercel, deploy the repository root (the included root `vercel.json` builds `frontend/` and publishes `frontend/dist`), or set the Vercel Root Directory to `frontend` (the frontend config includes the SPA route fallback). Set the Vercel environment variable `VITE_API_URL` to the public Django API URL ending in `/api`, then redeploy. The Django backend must be hosted separately and allow the deployed Vercel domain in `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS`.
+
 ## Tests and build
 
 ```bash
