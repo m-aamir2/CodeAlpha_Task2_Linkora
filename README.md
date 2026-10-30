@@ -139,7 +139,7 @@ Before deploying, provision a persistent PostgreSQL database and a **public Verc
    python manage.py migrate --noinput
    ```
 
-5. Push or redeploy from the repository root. Vercel builds the frontend service from `frontend/package.json`, detects Django from `backend/manage.py` and `backend/requirements.txt`, and routes both through the same deployment URL. On successful deployment, open that URL; API requests and page refreshes stay on that domain.
+5. Push or redeploy from the repository root. Vercel builds the frontend service from `frontend/package.json`, loads Django's ASGI application from `backend/config/asgi.py`, and routes both through the same deployment URL. On successful deployment, open that URL; API requests and page refreshes stay on that domain.
 
 If you use a custom Blob delivery domain, list its hostname in `BLOB_PUBLIC_HOSTNAMES`. If you use a custom app domain, add it to `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, and `CSRF_TRUSTED_ORIGINS` in the Vercel project environment. Existing local SQLite rows and files are not copied into PostgreSQL or Blob automatically; migrate them separately if production should include local demo data.
 
