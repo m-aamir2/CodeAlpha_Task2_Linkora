@@ -8,6 +8,10 @@ Linkora is a responsive social networking app built for CodeAlpha Full Stack Dev
 - Editable user profiles with avatars, cover photos, bios, locations, and websites
 - Paginated public and followed-user feed, text and image posts, editing, deletion, sharing, hashtags, likes, and comments
 - Follow and unfollow with in-app notifications for likes, comments, follows, and messages
+- Photo and video stories with captions, profile rings, replies and reactions; stories expire after 24 hours
+- Short-form Reels with thumbnails, visual filters, likes, comments, shares, saves, and a vertical feed
+- One-to-one audio and video calls inside conversations, with incoming call prompts, call controls, chat call logs, and missed-call alerts
+- Live notification popups and unread badges for likes, comments, follows, @mentions, and story replies, delivered over authenticated Django Channels WebSockets
 - People, post, and hashtag search
 - Private conversations with REST messaging, unread counts, and five-second client polling
 - Report posts, people, and comments; staff dashboard for report review, content removal, and account access
@@ -78,8 +82,11 @@ After setup, return to the project root and run `npm run dev` to launch both ser
 | `CORS_ALLOWED_ORIGINS` | Comma-separated trusted browser origins; local example includes port 5180 |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob token; required in deployment for direct image uploads |
 | `BLOB_PUBLIC_HOSTNAMES` | Optional comma-separated hostnames if you use a custom Blob delivery domain |
+| `CRON_SECRET` | Private token used by the scheduled expired-story cleanup endpoint in deployment |
+| `REDIS_URL` | Redis connection URL for cross-instance WebSocket notification delivery in production; local development uses an in-memory layer if blank |
 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL` | Optional SMTP settings for password reset email |
 | `VITE_API_URL` | Local frontend API base; defaults to `http://127.0.0.1:8001/api`. Production defaults to same-origin `/api`. |
+| `VITE_ICE_SERVERS` | Optional JSON array of WebRTC ICE servers. The default STUN server is enough for many direct connections; configure a TURN service for users behind restrictive NATs. |
 
 With `DEBUG=true`, password reset returns a development token in its response. In deployment, configure SMTP; reset requests use a generic response so an account’s existence is not disclosed.
 
@@ -93,14 +100,19 @@ All routes are prefixed by `/api/`. JWT login returns `access`, `refresh`, and t
 | Profiles | `GET users/`, `GET users/{username}/`, `GET/PATCH users/profile/`, `POST/DELETE users/{id}/follow/`, `GET users/{id}/followers/`, `GET users/{id}/following/` |
 | Posts | `GET/POST posts/`, `GET/PATCH/DELETE posts/{id}/`, `POST/DELETE posts/{id}/like/`, `POST posts/{id}/share/` |
 | Comments and likes | `GET/POST posts/{id}/comments/`, `GET/PATCH/DELETE comments/{id}/`, `GET posts/{id}/likes/` |
+| Stories | `GET/POST stories/`, `DELETE stories/{id}/`, `POST stories/{id}/reaction/`, `GET/POST stories/{id}/replies/` |
+| Reels | `GET/POST reels/`, `POST/DELETE reels/{id}/like/`, `POST/DELETE reels/{id}/save/`, `POST reels/{id}/share/`, `GET/POST reels/{id}/comments/` |
 | Notifications | `GET notifications/`, `PATCH notifications/{id}/read/`, `POST notifications/read-all/` |
 | Search | `GET search/?q=` |
 | Messages | `GET/POST messages/conversations/`, `GET messages/conversations/{id}/`, `POST messages/` |
+| Calls | `GET/POST calls/`, `GET calls/{id}/`, `POST calls/{id}/accept/`, `POST calls/{id}/reject/`, `POST calls/{id}/end/`, `GET/POST calls/{id}/signals/` |
 | Moderation | `POST reports/`; staff-only `GET admin/dashboard/`, `GET admin/reports/`, `PATCH/DELETE admin/reports/{id}/`, `GET admin/users/`, `PATCH admin/users/{id}/` |
 
 List endpoints use DRF page-number pagination and return `{count, next, previous, results}`. Post image uploads use multipart form data with `content` and repeated `uploaded_images` parts locally; the Vercel frontend sends authenticated Blob URLs after direct image uploads to stay within function payload limits.
 
 Post edits accept multipart requests with `uploaded_images` to add photos, `remove_image_ids` to remove selected photos, or `replace_images=true` to replace the full photo set. The post editor uploads the cropped and adjusted image output, so the saved photo includes its filter, rotation, and crop.
+
+Notifications are sent to authenticated clients over `/ws/notifications/`; the browser sends its access token as the first WebSocket message, not in the URL. Local development can use the in-memory channel layer. Set `REDIS_URL` to a shared Redis service in Vercel so notification events reach clients across function instances. The app reconnects and refreshes unread notifications if the socket drops.
 
 ## Database and deployment
 
@@ -122,6 +134,8 @@ Before deploying, provision a persistent PostgreSQL database and a **public Verc
    | `SECRET_KEY` | A private, randomly generated Django secret key |
    | `DATABASE_URL` | Persistent PostgreSQL connection URL, with SSL enabled by the provider |
    | `BLOB_READ_WRITE_TOKEN` | Automatically provided when the Blob store is connected; needed by the upload function |
+   | `CRON_SECRET` | A random private value used to authorize scheduled story cleanup |
+   | `VITE_ICE_SERVERS` | Optional ICE server JSON, including your TURN provider's URL and credentials for calls across restrictive networks |
    | `ALLOWED_HOSTS` | Optional for `*.vercel.app`; add any custom app domain here |
    | `CORS_ALLOWED_ORIGINS` | Optional for local or additional frontends; the Vercel single-origin app is included automatically |
    | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL` | SMTP settings for password-reset email delivery |

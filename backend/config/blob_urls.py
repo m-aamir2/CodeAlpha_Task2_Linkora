@@ -2,8 +2,9 @@ import os
 from urllib.parse import unquote, urlsplit
 
 
-def is_user_blob_url(value, user_id):
+def is_user_blob_url(value, user_id, allowed_categories=None):
     """Only accept HTTPS Vercel Blob URLs stored in the uploader's own folder."""
+    allowed_categories = allowed_categories or {"posts", "profiles"}
     try:
         parsed = urlsplit(value)
         hostname = (parsed.hostname or "").lower()
@@ -21,4 +22,9 @@ def is_user_blob_url(value, user_id):
         return False
     if not (known_vercel_blob_host or hostname in configured_hosts):
         return False
-    return len(segments) >= 3 and segments[:2] == ["users", str(user_id)] and all(segment not in {".", ".."} for segment in segments)
+    return (
+        len(segments) >= 4
+        and segments[:2] == ["users", str(user_id)]
+        and segments[2] in allowed_categories
+        and all(segment not in {".", ".."} for segment in segments)
+    )

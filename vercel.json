@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "fluid": true,
   "services": {
     "frontend": {
       "root": "frontend/"
@@ -9,7 +10,19 @@
       "entrypoint": "config.asgi:application"
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/cleanup-stories/",
+      "schedule": "0 4 * * *"
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/ws/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
     {
       "source": "/api/blob-upload",
       "destination": {

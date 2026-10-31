@@ -1,13 +1,21 @@
 from rest_framework import serializers
 from accounts.serializers import UserSerializer
-from .models import Conversation, Message
+from .models import Conversation, Message, Call
 
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
     class Meta:
         model = Message
-        fields = ["id", "conversation", "sender", "body", "created_at", "read_at"]
+        fields = ["id", "conversation", "sender", "body", "kind", "call_type", "call_status", "created_at", "read_at"]
         read_only_fields = ["id", "conversation", "sender", "created_at", "read_at"]
+
+class CallSerializer(serializers.ModelSerializer):
+    caller = UserSerializer(read_only=True)
+    recipient = UserSerializer(read_only=True)
+    class Meta:
+        model = Call
+        fields = ["id", "conversation", "caller", "recipient", "kind", "status", "offer", "answer", "created_at", "answered_at", "ended_at"]
+        read_only_fields = fields
 
 class ConversationSerializer(serializers.ModelSerializer):
     participants = UserSerializer(many=True, read_only=True)

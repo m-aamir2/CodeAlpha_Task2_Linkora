@@ -42,9 +42,10 @@ ALLOWED_HOSTS = list(dict.fromkeys([
 ]))
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
     "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
-    "rest_framework", "rest_framework_simplejwt.token_blacklist", "corsheaders",
+    "channels", "rest_framework", "rest_framework_simplejwt.token_blacklist", "corsheaders",
     "accounts", "social", "messaging", "moderation",
 ]
 
@@ -59,6 +60,16 @@ TEMPLATES = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIR
               "OPTIONS": {"context_processors": ["django.template.context_processors.request", "django.contrib.auth.context_processors.auth", "django.contrib.messages.context_processors.messages"]}}]
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
+
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [REDIS_URL]},
+    } if REDIS_URL else {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}
 
 DATABASE_URL = (os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or "").strip()
 if DATABASE_URL.startswith(("postgres://", "postgresql://")):
@@ -112,6 +123,8 @@ else:
     }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MAX_UPLOAD_SIZE = 8 * 1024 * 1024
+MAX_VIDEO_UPLOAD_SIZE = 100 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(MAX_VIDEO_UPLOAD_SIZE + 20 * 1024 * 1024)))
 
 VERCEL_ORIGINS = [f"https://{host}" for host in VERCEL_HOSTS]
 CORS_ALLOWED_ORIGINS = list(dict.fromkeys([
@@ -146,7 +159,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle", "rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1200/hour"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1200/hour", "call_poll": "2400/hour", "call_signaling": "10000/hour"},
 }
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30), "REFRESH_TOKEN_LIFETIME": timedelta(days=7),

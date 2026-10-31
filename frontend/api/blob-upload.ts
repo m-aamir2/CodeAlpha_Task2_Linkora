@@ -2,7 +2,9 @@ import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import { jwtVerify } from 'jose'
 
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp']
-const maxImageSize = 8 * 1024 * 1024
+const videoTypes = ['video/mp4', 'video/webm']
+const imageMaxSize = 8 * 1024 * 1024
+const videoMaxSize = 100 * 1024 * 1024
 
 export default async function handler(request: any, response: any) {
   response.setHeader('Cache-Control', 'no-store')
@@ -31,15 +33,20 @@ export default async function handler(request: any, response: any) {
           algorithms: ['HS256'],
         })
         const userId = String(payload.user_id || '')
-        const path = pathname.match(/^users\/(\d+)\/(posts|profiles)\/([a-zA-Z0-9._-]+)$/)
+        const path = pathname.match(/^users\/(\d+)\/(posts|profiles|stories|reels|reel-thumbnails)\/([a-zA-Z0-9._-]+)$/)
         if (payload.token_type !== 'access' || !/^\d+$/.test(userId) || !path || path[1] !== userId) {
-          throw new Error('You are not allowed to upload this image.')
+          throw new Error('You are not allowed to upload this media.')
         }
+
+        const category = path[2]
+        const videoUpload = /\.(mp4|webm)$/i.test(path[3])
+        const allowedContentTypes = category === 'reels' || (category === 'stories' && videoUpload) ? videoTypes : imageTypes
+        const maximumSizeInBytes = videoUpload ? videoMaxSize : imageMaxSize
 
         return {
           addRandomSuffix: true,
-          allowedContentTypes: imageTypes,
-          maximumSizeInBytes: maxImageSize,
+          allowedContentTypes,
+          maximumSizeInBytes,
         }
       },
       onUploadCompleted: async () => undefined,

@@ -14,6 +14,10 @@ const post: Post = {
   author: { id: 1, username: 'alex', full_name: 'Alex Morgan', bio: '', location: '', website: '', avatar_url: null, cover_url: null, created_at: '2026-01-01T00:00:00Z', posts_count: 1, followers_count: 0, following_count: 0, is_following: false, is_staff: false },
   content: 'A sunny afternoon #weekend', is_public: true, images: [], likes_count: 0, comments_count: 0, liked_by_me: false, shares_count: 0, hashtags: ['weekend'], created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
 }
+const photoPost: Post = {
+  ...post,
+  images: [{ id: 44, url: 'https://images.test/photo.jpg', alt_text: 'A landscape', created_at: post.created_at }],
+}
 
 describe('PostCard', () => {
   beforeEach(() => { vi.clearAllMocks() })
@@ -26,6 +30,23 @@ describe('PostCard', () => {
     expect(apiMock.post).toHaveBeenCalledWith('/posts/7/like/')
     expect(await screen.findByRole('button', { name: 'Liked' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Liked' }))
+    await waitFor(() => expect(apiMock.delete).toHaveBeenCalledWith('/posts/7/like/'))
+    expect(await screen.findByRole('button', { name: 'Like' })).toBeInTheDocument()
+  })
+
+  it('double-clicks a photo to like it, shows the heart burst, and double-clicks again to unlike', async () => {
+    const user = userEvent.setup()
+    apiMock.post.mockResolvedValue({ data: { liked: true, likes_count: 1 } })
+    apiMock.delete.mockResolvedValue({ data: { liked: false, likes_count: 0 } })
+    render(<MemoryRouter><PostCard initialPost={photoPost}/></MemoryRouter>)
+    const photo = screen.getByRole('button', { name: /double tap to like/i })
+
+    await user.dblClick(photo)
+    expect(apiMock.post).toHaveBeenCalledWith('/posts/7/like/')
+    expect(await screen.findByTestId('photo-like-heart')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Liked' })).toBeInTheDocument()
+
+    await user.dblClick(photo)
     await waitFor(() => expect(apiMock.delete).toHaveBeenCalledWith('/posts/7/like/'))
     expect(await screen.findByRole('button', { name: 'Like' })).toBeInTheDocument()
   })

@@ -1,11 +1,35 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Bell, Heart, MessageCircle, UserPlus, Mail, CheckCheck, Sparkles } from 'lucide-react'
-import { api, errorMessage } from '../services/api'
-import { Notification as Notice, Page } from '../types'
+import { useEffect } from 'react'
+import { AtSign, Bell, CheckCheck, Heart, Mail, MessageCircle, Phone, PhoneMissed, Sparkles, UserPlus } from 'lucide-react'
+import { Notification as Notice } from '../types'
 import Avatar from '../components/Avatar'
+import { useNotifications, notificationLabel } from '../context/NotificationContext'
 import { timeAgo } from '../utils'
 
-const icons={like:Heart,comment:MessageCircle,follow:UserPlus,message:Mail}
-function label(kind:Notice['kind']){return {like:'liked one of your posts',comment:'left a comment on your post',follow:'started following you',message:'sent you a message'}[kind]}
-export default function Notifications(){const [items,setItems]=useState<Notice[]>([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [unread,setUnread]=useState(0);const nav=useNavigate();const load=async()=>{try{const {data}=await api.get<Page<Notice>&{unread_count:number}>('/notifications/');setItems(data.results);setUnread(data.unread_count)}catch(e){setError(errorMessage(e))}finally{setLoading(false)}};useEffect(()=>{load()},[]);const read=async(item:Notice)=>{if(!item.is_read){await api.patch(`/notifications/${item.id}/read/`);setItems(rows=>rows.map(row=>row.id===item.id?{...row,is_read:true}:row));setUnread(v=>Math.max(0,v-1))}if(item.kind==='message')nav('/messages');else if(item.post)nav(`/?post=${item.post}`);else nav(`/u/${item.actor.username}`)};const markAll=async()=>{try{await api.post('/notifications/read-all/');setItems(rows=>rows.map(row=>({...row,is_read:true})));setUnread(0)}catch(e){setError(errorMessage(e))}};return <div className="page-column"><div className="page-heading"><div><p className="eyebrow">STAY IN THE LOOP</p><h1>Your notifications</h1><p className="muted">The little moments when someone thinks of you.</p></div><span className="heading-spark"><Bell size={19}/></span></div><div className="notifications-card card"><div className="notifications-toolbar"><div><strong>Recent activity</strong><span>{unread?`${unread} unread`:'You’re all caught up'}</span></div>{unread>0&&<button className="text-link" onClick={markAll}><CheckCheck size={15}/> Mark all read</button>}</div>{error&&<p className="form-error">{error}</p>}{loading?<div className="skeleton-stack"><div className="skeleton-card"><div className="skeleton-line"/><div className="skeleton-line short"/></div></div>:items.length===0?<div className="empty-state compact"><span className="empty-icon"><Sparkles/></span><h3>A quiet moment</h3><p>Likes, comments, and new followers will show up here.</p></div>:<div className="notification-list">{items.map(item=>{const Icon=icons[item.kind];return <button className={`notification-item ${item.is_read?'read':'unread'}`} key={item.id} onClick={()=>read(item)}><span className="notification-avatar"><Avatar user={item.actor}/><i className={`activity-icon activity-${item.kind}`}><Icon size={12} fill={item.kind==='like'?'currentColor':'none'}/></i></span><span className="notification-copy"><span><strong>{item.actor.full_name||item.actor.username}</strong> {label(item.kind)}{item.post_preview&&item.kind!=='follow'&&<em> “{item.post_preview.slice(0,90)}”</em>}</span><time>{timeAgo(item.created_at)}</time></span>{!item.is_read&&<i className="unread-dot"/>}</button>})}</div>}</div></div>}
+const icons: Record<Notice['kind'], typeof Heart> = {
+  like: Heart, comment: MessageCircle, follow: UserPlus, message: Mail, call: Phone,
+  missed_call: PhoneMissed, declined_call: PhoneMissed, mention: AtSign,
+  story_reply: MessageCircle, story_reaction: Heart,
+}
+
+export default function Notifications() {
+  const { notifications, unread, loading, error, refresh, openNotification, markAllRead } = useNotifications()
+  useEffect(() => { void refresh() }, [refresh])
+
+  return <div className="page-column">
+    <div className="page-heading"><div><p className="eyebrow">STAY IN THE LOOP</p><h1>Your notifications</h1><p className="muted">The little moments when someone thinks of you.</p></div><span className="heading-spark"><Bell size={19}/></span></div>
+    <div className="notifications-card card">
+      <div className="notifications-toolbar"><div><strong>Recent activity</strong><span>{unread ? `${unread} unread` : 'You’re all caught up'}</span></div>{unread > 0 && <button className="text-link" onClick={() => void markAllRead()}><CheckCheck size={15}/> Mark all read</button>}</div>
+      {error && <p className="form-error">{error}</p>}
+      {loading ? <div className="skeleton-stack"><div className="skeleton-card"><div className="skeleton-line"/><div className="skeleton-line short"/></div></div>
+        : notifications.length === 0 ? <div className="empty-state compact"><span className="empty-icon"><Sparkles/></span><h3>A quiet moment</h3><p>Likes, comments, and new followers will show up here.</p></div>
+          : <div className="notification-list">{notifications.map(item => {
+            const Icon = icons[item.kind]
+            return <button className={`notification-item ${item.is_read ? 'read' : 'unread'}`} key={item.id} onClick={() => void openNotification(item)}>
+              <span className="notification-avatar"><Avatar user={item.actor}/><i className={`activity-icon activity-${item.kind}`}><Icon size={12} fill={item.kind === 'like' || item.kind === 'story_reaction' ? 'currentColor' : 'none'}/></i></span>
+              <span className="notification-copy"><span><strong>{item.actor.full_name || item.actor.username}</strong> {notificationLabel(item.kind)}{item.post_preview && item.post && <em> “{item.post_preview.slice(0, 90)}”</em>}</span><time>{timeAgo(item.created_at)}</time></span>
+              {!item.is_read && <i className="unread-dot"/>}
+            </button>
+          })}</div>}
+    </div>
+  </div>
+}

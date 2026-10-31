@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, MouseEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Heart, MessageCircle, MoreHorizontal, Pencil, Send, Share2, Trash2, Flag, X, Users } from 'lucide-react'
 import { api, errorMessage } from '../services/api'
@@ -20,10 +20,44 @@ export default function PostCard({ initialPost, onDelete, onUpdate }: { initialP
   const [likesOpen, setLikesOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [heartBurst, setHeartBurst] = useState<{ imageId: number; nonce: number } | null>(null)
+  const photoTapTimer = useRef<number | null>(null)
+  const heartBurstTimer = useRef<number | null>(null)
+  const heartBurstNonce = useRef(0)
   const { user } = useAuth()
   const navigate = useNavigate()
   const ownPost = user?.id === post.author.id || user?.is_staff
   const update = (next:Post) => { setPost(next); onUpdate?.(next) }
+  useEffect(() => () => {
+    if (photoTapTimer.current !== null) window.clearTimeout(photoTapTimer.current)
+    if (heartBurstTimer.current !== null) window.clearTimeout(heartBurstTimer.current)
+  }, [])
+  useEffect(() => {
+    if (!lightboxUrl) return
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setLightboxUrl(null) }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [lightboxUrl])
+  const playHeartBurst = (imageId:number) => {
+    setHeartBurst({imageId, nonce:++heartBurstNonce.current})
+    if (heartBurstTimer.current !== null) window.clearTimeout(heartBurstTimer.current)
+    heartBurstTimer.current = window.setTimeout(() => setHeartBurst(null), 900)
+  }
+  const handlePhotoTap = (event:MouseEvent<HTMLButtonElement>, imageUrl:string, imageId:number) => {
+    event.preventDefault()
+    if (photoTapTimer.current !== null) {
+      window.clearTimeout(photoTapTimer.current)
+      photoTapTimer.current = null
+      if (!post.liked_by_me) playHeartBurst(imageId)
+      void toggleLike()
+      return
+    }
+    photoTapTimer.current = window.setTimeout(() => {
+      photoTapTimer.current = null
+      setLightboxUrl(imageUrl)
+    }, 450)
+  }
   const toggleLike = async () => {
     if (!user) return navigate('/login')
     try { const {data}=post.liked_by_me?await api.delete(`/posts/${post.id}/like/`):await api.post(`/posts/${post.id}/like/`); update({...post,liked_by_me:data.liked,likes_count:data.likes_count}) }
@@ -49,12 +83,13 @@ export default function PostCard({ initialPost, onDelete, onUpdate }: { initialP
   return <article className="post-card">
     <div className="post-header"><button className="avatar-button" onClick={()=>navigate(`/u/${post.author.username}`)}><Avatar user={post.author}/></button><div className="post-author"><button onClick={()=>navigate(`/u/${post.author.username}`)} className="text-button"><strong>{post.author.full_name || post.author.username}</strong></button><span>@{post.author.username} <i>·</i> {timeAgo(post.created_at)}</span></div><button className="icon-button more-button" aria-label="Post options" onClick={()=>setShowMenu(v=>!v)}><MoreHorizontal size={20}/></button>{showMenu&&<div className="post-menu">{ownPost?<><button onClick={()=>{setShowMenu(false);editPost()}}><Pencil size={15}/> Edit post</button><button className="danger-text" onClick={()=>{setShowMenu(false);deletePost()}}><Trash2 size={15}/> Delete post</button></>:<button onClick={()=>{setShowMenu(false);reportPost()}}><Flag size={15}/> Report post</button>}</div>}</div>
     {post.content&&<div className="post-copy">{post.content.split(/(#[\w]+)/g).map((part,i)=>part.startsWith('#')?<button className="hashtag" key={i} onClick={()=>navigate(`/search?q=${encodeURIComponent(part)}`)}>{part}</button>:<span key={i}>{part}</span>)}</div>}
-    {!!post.images.length&&<div className={`post-media media-${Math.min(post.images.length,4)}`}>{post.images.slice(0,4).map((image,index)=><a key={image.id} href={image.url} target="_blank" rel="noreferrer" className={`post-image image-${index}`}><img src={image.url} alt={image.alt_text||'Post image'} loading="lazy"/>{index===3&&post.images.length>4&&<span>+{post.images.length-4}</span>}</a>)}</div>}
+    {!!post.images.length&&<div className={`post-media media-${Math.min(post.images.length,4)}`}>{post.images.slice(0,4).map((image,index)=><button key={image.id} type="button" aria-label={`View photo from ${post.author.username}; double tap to ${post.liked_by_me?'unlike':'like'}`} onClick={event=>handlePhotoTap(event,image.url,image.id)} className={`post-image image-${index}`}><img src={image.url} alt={image.alt_text||'Post image'} loading="lazy"/>{heartBurst?.imageId===image.id&&<span key={heartBurst.nonce} data-testid="photo-like-heart" className="photo-heart-burst" aria-hidden="true"><Heart size={76} fill="currentColor"/></span>}{index===3&&post.images.length>4&&<span className="more-images">+{post.images.length-4}</span>}</button>)}</div>}
     <div className="post-stats"><button aria-label={`View people who liked this post (${post.likes_count})`} onClick={showLikedUsers}>{post.likes_count.toLocaleString()} {post.likes_count===1?'like':'likes'}</button><button onClick={toggleComments}>{post.comments_count} {post.comments_count===1?'comment':'comments'}</button><span>{post.shares_count} {post.shares_count===1?'share':'shares'}</span></div>
     {likesOpen&&<div className="liked-people-popover"><div className="liked-people-heading"><strong><Users size={14}/> Liked by</strong><button onClick={()=>setLikesOpen(false)} aria-label="Close likes"><X size={15}/></button></div>{likedUsers.length?likedUsers.map(person=><button className="liked-person" key={person.id} onClick={()=>navigate(`/u/${person.username}`)}><Avatar user={person} size="sm"/><span><strong>{person.full_name||person.username}</strong><small>@{person.username}</small></span></button>):<p className="empty-inline">No likes yet.</p>}</div>}
     <div className="post-actions"><button className={post.liked_by_me?'liked':''} onClick={toggleLike}><Heart size={19} fill={post.liked_by_me?'currentColor':'none'}/><span>{post.liked_by_me?'Liked':'Like'}</span></button><button onClick={toggleComments}><MessageCircle size={19}/><span>Comment</span></button><button onClick={sharePost} disabled={busy}><Share2 size={18}/><span>Share</span></button></div>
     {notice&&<div className="inline-notice" role="status">{notice}<button onClick={()=>setNotice('')} aria-label="Dismiss"><X size={14}/></button></div>}
     {commentsOpen&&<section className="comments-panel"><div className="comments-list">{comments.length===0?<p className="empty-inline">Be the first to leave a note.</p>:comments.map(item=><div className="comment-row" key={item.id}><button className="avatar-button" onClick={()=>navigate(`/u/${item.author.username}`)}><Avatar user={item.author} size="sm"/></button><div className="comment-bubble"><div><strong>{item.author.full_name||item.author.username}</strong><time>{timeAgo(item.created_at)}</time></div><p>{item.content}</p></div>{user?.id===item.author.id&&<button className="icon-button comment-delete" onClick={()=>editComment(item)} aria-label="Edit comment"><Pencil size={14}/></button>}{(user?.id===item.author.id||user?.is_staff)&&<button className="icon-button comment-delete" onClick={()=>removeComment(item)} aria-label="Delete comment"><Trash2 size={14}/></button>}</div>)}</div><form className="comment-form" onSubmit={addComment}><Avatar user={user} size="sm"/><input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Write a comment…" maxLength={2000}/><button className="send-button" disabled={commentBusy||!comment.trim()} aria-label="Send comment"><Send size={17}/></button></form></section>}
     {editing&&<EditPostModal post={post} onClose={()=>setEditing(false)} onSave={update}/>}
+    {lightboxUrl&&<div className="photo-lightbox" role="dialog" aria-modal="true" aria-label="Full-size photo" onClick={()=>setLightboxUrl(null)}><button type="button" className="photo-lightbox-close" aria-label="Close photo" onClick={()=>setLightboxUrl(null)}><X size={22}/></button><img src={lightboxUrl} alt="Full-size post photo" onClick={event=>event.stopPropagation()}/></div>}
   </article>
 }
